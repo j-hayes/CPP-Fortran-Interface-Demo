@@ -1,4 +1,11 @@
 ! crectangle_module.f90
+
+MODULE my_typedef
+USE, INTRINSIC :: ISO_C_BINDING
+IMPLICIT NONE
+
+END MODULE my_typedef
+
 module CRectangle_module
    use, intrinsic :: ISO_C_Binding, only: C_int, C_ptr, C_NULL_ptr, C_double
    implicit none
@@ -7,6 +14,12 @@ module CRectangle_module
       private
       type(C_ptr) :: object = C_NULL_ptr
    end type CRectangle_type
+
+   type, bind(c) :: double_wrappper
+      integer(c_int) :: count
+      type(c_ptr) :: values ! Maps to “double *d”
+   end type double_wrappper
+   
    interface
       function C_CRectangle__new (a, b) result(this) bind(C,name="CRectangle__new")
          import
@@ -22,6 +35,11 @@ module CRectangle_module
          integer(C_int) :: the_area
          type(C_ptr), value :: this
       end function C_CRectangle__area
+      subroutine C_CRectangle_get_values (this, values_pointer)  bind(C,name="CRectangle_get_values")
+         import
+         type(C_ptr), value :: this
+         type(double_wrappper) :: values_pointer
+      end subroutine C_CRectangle_get_values
       function CPure__dofunction (a) result(b) bind(C,name="CPure__dofunction")
         import
         integer(C_int), value :: a
@@ -39,10 +57,15 @@ module CRectangle_module
    interface area
       module procedure CRectangle__area
    end interface area
+   
+   interface get_values
+      module procedure CRectangle_get_values
+   end interface get_values
+
    interface do_my_function
       module procedure Cdofunction
    end interface do_my_function
-   public :: new, delete, area, CRectangle_type, do_my_function
+   public :: new, delete, area, CRectangle_type, do_my_function, double_wrappper, get_values
 contains
 ! Fortran wrapper routines to interface C wrappers
    subroutine CRectangle__new(this,a,b)
@@ -60,6 +83,13 @@ contains
       integer :: area_value
       area_value = C_CRectangle__area(this%object)
    end function CRectangle__area
+   
+   subroutine CRectangle_get_values(this, wrapper)
+      type(CRectangle_type), intent(in) :: this
+      type(double_wrappper) :: wrapper
+      call C_CRectangle_get_values(this%object, wrapper)
+   end subroutine CRectangle_get_values
+   
    function Cdofunction(a) result(b)
     double precision :: b
     integer :: a
@@ -68,9 +98,18 @@ contains
 end module CRectangle_module
 program main
    use CRectangle_module
+   use, intrinsic :: ISO_C_Binding
+
+   REAL(c_double), POINTER :: fortran_values(:)
    type(CRectangle_type) :: rect
+   type(double_wrappper) :: values
    call new(rect,3,4)
    write(*,*) 'rect area: ', area(rect)
    call delete(rect)   
    write(*,*) 'do function: ', do_my_function(3)
+   call get_values(rect, values)
+   call c_f_pointer (values%values, fortran_values, (/ N /))
+   write(*,*) fortran_values(1)
+   write(*,*) fortran_values(2)
+
 end program main
